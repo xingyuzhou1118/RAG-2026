@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG 知识库问答</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --primary: #4a90d9;
+  --primary-hover: #357abd;
+  --text: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --border: #e1e8ed;
+  --danger: #e74c3c;
+  --danger-hover: #c0392b;
+  --success: #27ae60;
+  --shadow: 0 1px 3px rgba(0,0,0,.06);
+  --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; }
+
+.layout { display:flex; height:100vh; max-width:1200px; margin:0 auto; }
+
+/* ===== 侧边栏 ===== */
+.sidebar {
+  width:280px; min-width:280px; background:var(--card); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow-y:auto;
+}
+.sidebar-header {
+  padding:18px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;
+}
+.sidebar-header .logo { font-size:18px; font-weight:700; color:var(--primary); }
+.sidebar-header .status { font-size:11px; margin-left:auto; padding:2px 8px; border-radius:10px; font-weight:500; }
+.status.online { background:#eafaf1; color:var(--success); }
+.status.offline { background:#fdf2f2; color:var(--danger); }
+
+.sidebar-section { padding:12px 16px; border-bottom:1px solid var(--border); }
+.sidebar-section h3 { font-size:12px; text-transform:uppercase; color:var(--text-secondary); margin-bottom:10px; letter-spacing:.5px; }
+.sidebar-section input[type="text"],
+.sidebar-section input[type="number"] {
+  width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;
+  background:var(--bg); color:var(--text); outline:none; transition:border .2s;
+}
+.sidebar-section input:focus { border-color:var(--primary); }
+.sidebar-section .row { display:flex; gap:8px; margin-top:8px; }
+.sidebar-section .btn { flex:1; }
+
+/* ===== 知识库列表 ===== */
+.kb-list { flex:1; overflow-y:auto; padding:8px 0; }
+.kb-item {
+  padding:10px 16px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;
+  border-left:3px solid transparent; transition:background .15s; font-size:13px;
+}
+.kb-item:hover { background:var(--bg); }
+.kb-item.active { background:#eef5fc; border-left-color:var(--primary); font-weight:600; }
+.kb-item .kb-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.kb-item .kb-del { color:var(--text-secondary); font-size:16px; cursor:pointer; padding:0 4px; visibility:hidden; }
+.kb-item:hover .kb-del { visibility:visible; }
+.kb-item .kb-del:hover { color:var(--danger); }
+.kb-empty { padding:20px; text-align:center; color:var(--text-secondary); font-size:13px; }
+
+/* ===== 文档列表 ===== */
+.doc-list { overflow-y:auto; padding:4px 0; max-height:200px; }
+.doc-item {
+  padding:8px 16px 8px 24px; cursor:default; display:flex; align-items:center; justify-content:space-between;
+  transition:background .15s; font-size:13px; border-left:3px solid transparent;
+}
+.doc-item:hover { background:var(--bg); }
+.doc-item .doc-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.doc-item .doc-del { color:var(--text-secondary); font-size:16px; cursor:pointer; padding:0 4px; visibility:hidden; }
+.doc-item:hover .doc-del { visibility:visible; }
+.doc-item .doc-del:hover { color:var(--danger); }
+
+/* ===== 上传区域 ===== */
+.upload-zone {
+  border:2px dashed var(--border); border-radius:8px; text-align:center; padding:16px;
+  cursor:pointer; transition:border .2s, background .2s; margin-top:8px; font-size:12px; color:var(--text-secondary);
+}
+.upload-zone:hover, .upload-zone.dragover { border-color:var(--primary); background:#f8fafe; }
+.upload-zone .upload-icon { font-size:24px; margin-bottom:4px; }
+.upload-info { font-size:11px; color:var(--text-secondary); margin-top:4px; }
+
+/* ===== 按钮 ===== */
+.btn {
+  padding:8px 14px; border:none; border-radius:6px; font-size:13px; cursor:pointer;
+  font-weight:500; transition:all .2s; display:inline-flex; align-items:center; justify-content:center; gap:4px;
+}
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-hover); }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-danger:hover { background:var(--danger-hover); }
+.btn-outline { background:transparent; color:var(--primary); border:1px solid var(--primary); }
+.btn-outline:hover { background:#eef5fc; }
+.btn-sm { padding:5px 10px; font-size:12px; }
+
+/* ===== 主区域 ===== */
+.main { flex:1; display:flex; flex-direction:column; background:var(--card); margin:12px; border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+
+/* ===== 聊天头部 ===== */
+.chat-header {
+  padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px;
+}
+.chat-header .kb-badge {
+  font-size:12px; background:#eef5fc; color:var(--primary); padding:4px 10px; border-radius:12px;
+  font-weight:500;
+}
+.chat-header .kb-badge.empty { background:#f0f0f0; color:var(--text-secondary); }
+
+/* ===== 消息区域 ===== */
+.messages { flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:14px; }
+.msg { max-width:80%; padding:10px 16px; border-radius:12px; line-height:1.65; font-size:14px; white-space:pre-wrap; word-break:break-word; }
+.msg.user { align-self:flex-end; background:var(--primary); color:#fff; border-bottom-right-radius:4px; }
+.msg.assistant { align-self:flex-start; background:var(--bg); color:var(--text); border-bottom-left-radius:4px; }
+.msg.error { align-self:flex-start; background:#fdf2f2; color:var(--danger); border:1px solid #f5c6cb; }
+.msg.system { align-self:center; font-size:12px; color:var(--text-secondary); background:transparent; max-width:100%; }
+.typing { align-self:flex-start; padding:8px 14px; color:var(--text-secondary); font-size:13px; font-style:italic; }
+
+/* ===== 引用角标 ===== */
+.citation {
+  display:inline-block; color:var(--primary); font-size:11px; font-weight:600;
+  cursor:pointer; padding:0 4px; vertical-align:super; border-radius:3px;
+  background:#eef5fc; margin:0 1px; transition:background .15s;
+}
+.citation:hover { background:#d4e6f9; }
+
+/* ===== 引用来源面板 ===== */
+.source-panel {
+  display:none; position:fixed; right:20px; top:50%; transform:translateY(-50%);
+  width:340px; max-height:70vh; background:var(--card); border-radius:var(--radius);
+  box-shadow:0 8px 30px rgba(0,0,0,.15); z-index:50; overflow-y:auto;
+}
+.source-panel.show { display:block; }
+.source-panel-header {
+  padding:14px 16px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  font-weight:600; font-size:14px;
+}
+.source-panel-close { cursor:pointer; color:var(--text-secondary); font-size:18px; }
+.source-panel-close:hover { color:var(--danger); }
+.source-item {
+  padding:10px 16px; border-bottom:1px solid var(--border); font-size:13px;
+}
+.source-item .source-id { color:var(--primary); font-weight:600; }
+.source-item .source-doc { color:var(--text-secondary); font-size:12px; margin-bottom:4px; }
+.source-item .source-text { line-height:1.55; color:var(--text); font-size:13px; }
+
+/* ===== 输入区域 ===== */
+.input-area { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:10px; align-items:flex-end; }
+.input-area textarea {
+  flex:1; padding:10px 14px; border:1px solid var(--border); border-radius:8px;
+  font-size:14px; resize:none; outline:none; min-height:44px; max-height:120px;
+  background:var(--bg); color:var(--text); transition:border .2s; font-family:inherit;
+}
+.input-area textarea:focus { border-color:var(--primary); }
+.input-area button {
+  padding:10px 22px; background:var(--primary); color:#fff; border:none;
+  border-radius:8px; font-size:14px; cursor:pointer; font-weight:500;
+  transition:background .2s; white-space:nowrap;
+}
+.input-area button:hover { background:var(--primary-hover); }
+.input-area button:disabled { background:#ccc; cursor:not-allowed; }
+
+/* ===== 弹窗 ===== */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:100; justify-content:center; align-items:center; }
+.modal-overlay.show { display:flex; }
+.modal { background:var(--card); border-radius:var(--radius); padding:24px; width:360px; box-shadow:0 8px 30px rgba(0,0,0,.12); }
+.modal h3 { margin-bottom:16px; }
+.modal input { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; margin-bottom:16px; outline:none; }
+.modal input:focus { border-color:var(--primary); }
+.modal .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- ===== 侧边栏 ===== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">RAG 知识库</span>
+      <span id="status" class="status offline">离线</span>
+    </div>
+
+    <!-- 创建 -->
+    <div class="sidebar-section">
+      <h3>创建知识库</h3>
+      <input type="text" id="newKbName" placeholder="输入名称..." maxlength="50">
+      <div class="row">
+        <button class="btn btn-primary btn-sm" onclick="createKb()">创建</button>
+      </div>
+    </div>
+
+    <!-- 上传 -->
+    <div class="sidebar-section">
+      <h3>上传文档</h3>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-icon">&#128196;</div>
+        <div>点击或拖拽上传 PDF / Word（.pdf / .doc / .docx）</div>
+        <div class="upload-info" id="uploadInfo"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf,.doc,.docx" style="display:none" onchange="uploadFile()">
+    </div>
+
+    <!-- 知识库列表 -->
+    <div class="sidebar-section" style="border-bottom:none; padding-bottom:4px">
+      <h3>我的知识库</h3>
+    </div>
+    <div class="kb-list" id="kbList">
+      <div class="kb-empty">暂无知识库，创建一个吧</div>
+    </div>
+
+    <div class="sidebar-section" style="border-bottom:none; padding-bottom:4px">
+      <h3>文档列表</h3>
+    </div>
+    <div class="doc-list" id="docList">
+      <div class="kb-empty">请先选择知识库</div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区域 ===== -->
+  <main class="main">
+    <div class="chat-header">
+      <span class="kb-badge empty" id="kbBadge">未选择知识库</span>
+      <button class="btn btn-outline btn-sm" onclick="newChat()" style="margin-left:auto" id="newChatBtn" disabled>新建对话</button>
+    </div>
+    <div class="messages" id="messages">
+      <div class="msg system">选择一个知识库开始对话，或先创建新的知识库并上传文档。</div>
+    </div>
+    <div class="input-area">
+      <textarea id="input" placeholder="输入问题，Enter 发送，Shift+Enter 换行" rows="1"></textarea>
+      <button id="sendBtn" onclick="send()" disabled>发送</button>
+    </div>
+  </main>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <h3>确认删除</h3>
+    <p id="deleteMsg" style="margin-bottom:16px;font-size:14px;"></p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">取消</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 引用来源面板 -->
+<div class="source-panel" id="sourcePanel">
+  <div class="source-panel-header">
+    <span>引用来源</span>
+    <span class="source-panel-close" onclick="closeSourcePanel()">&times;</span>
+  </div>
+  <div id="sourceContent"></div>
+</div>
+
+<script>
+const BASE = "http://localhost:6010";
+const API_KEY = "rag-internal-key-2026";
+const HEADERS_JSON = { "Content-Type":"application/json", "X-API-Key":API_KEY };
+
+let currentKbId = null;
+let kbList = [];
+let docList = [];
+let chatHistory = [];
+let currentSources = [];
+
+// ===== 健康检查 =====
+const $status = document.getElementById("status");
+async function checkHealth() {
+  try {
+    const r = await fetch(BASE + "/docs", { method:"HEAD" });
+    $status.textContent = r.ok ? "在线" : "离线";
+    $status.className = "status " + (r.ok ? "online" : "offline");
+  } catch { $status.textContent = "离线"; $status.className = "status offline"; }
+}
+
+// ===== 知识库 CRUD =====
+async function loadKbList() {
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_databases", { headers:HEADERS_JSON });
+    if (!resp.ok) return;
+    kbList = await resp.json();
+    renderKbList();
+  } catch {}
+}
+
+function renderKbList() {
+  const $list = document.getElementById("kbList");
+  if (!kbList || kbList.length === 0) {
+    $list.innerHTML = '<div class="kb-empty">暂无知识库，创建一个吧</div>';
+    return;
+  }
+  $list.innerHTML = kbList.map(kb => `
+    <div class="kb-item${currentKbId === kb.knowledge_id ? ' active' : ''}" onclick="selectKb(${kb.knowledge_id}, '${escapeHtml(kb.title)}')">
+      <span class="kb-name">${escapeHtml(kb.title)}</span>
+      <span class="kb-del" onclick="event.stopPropagation();confirmDeleteKb(${kb.knowledge_id}, '${escapeHtml(kb.title)}')">&times;</span>
+    </div>
+  `).join("");
+}
+
+async function loadDocList(knowledgeId) {
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_documents?knowledge_id=" + knowledgeId, { headers:HEADERS_JSON });
+    if (!resp.ok) { docList = []; renderDocList(); return; }
+    docList = await resp.json();
+    renderDocList();
+  } catch { docList = []; renderDocList(); }
+}
+
+function renderDocList() {
+  const $list = document.getElementById("docList");
+  if (!currentKbId) {
+    $list.innerHTML = '<div class="kb-empty">请先选择知识库</div>';
+    return;
+  }
+  if (!docList || docList.length === 0) {
+    $list.innerHTML = '<div class="kb-empty">暂无文档</div>';
+    return;
+  }
+  $list.innerHTML = docList.map(d => `
+    <div class="doc-item">
+      <span class="doc-name" title="${escapeHtml(d.title)}">${escapeHtml(d.title)}.pdf</span>
+      <span class="doc-del" onclick="event.stopPropagation();confirmDeleteDoc(${d.document_id}, '${escapeHtml(d.title)}')">&times;</span>
+    </div>
+  `).join("");
+}
+
+function selectKb(id, name) {
+  currentKbId = id;
+  chatHistory = [];
+  currentSources = [];
+  const badge = document.getElementById("kbBadge");
+  badge.textContent = name || "知识库 #" + id;
+  badge.className = "kb-badge";
+  document.getElementById("sendBtn").disabled = false;
+  document.getElementById("newChatBtn").disabled = false;
+  document.getElementById("input").focus();
+  document.getElementById("uploadInfo").textContent = "当前: " + (name || id);
+  renderKbList();
+  loadDocList(id);
+  document.getElementById("messages").innerHTML = "";
+}
+
+async function createKb() {
+  const nameInput = document.getElementById("newKbName");
+  const name = nameInput.value.trim();
+  if (!name) return alert("请输入知识库名称");
+
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_database", {
+      method:"POST", headers:HEADERS_JSON,
+      body:JSON.stringify({ category:"general", title:name })
+    });
+    if (!resp.ok) { const e=await resp.json().catch(()=>({})); throw new Error(e.detail||"创建失败"); }
+    const data = await resp.json();
+    nameInput.value = "";
+    kbList.push({ knowledge_id:data.knowledge_id, title:name });
+    addMsg("system", "知识库「" + name + "」创建成功");
+    renderKbList();
+    selectKb(data.knowledge_id, name);
+  } catch(e) { alert("创建失败: " + e.message); }
+}
+
+let deleteTargetId = null;
+let deleteMode = 'kb';
+function confirmDeleteKb(id, name) {
+  deleteTargetId = id;
+  deleteMode = 'kb';
+  document.getElementById("deleteMsg").textContent = "确定要删除知识库「" + name + "」吗？所有文档将一并删除。";
+  document.getElementById("deleteModal").classList.add("show");
+  document.getElementById("confirmDeleteBtn").onclick = deleteKb;
+}
+function confirmDeleteDoc(id, name) {
+  deleteTargetId = id;
+  deleteMode = 'doc';
+  document.getElementById("deleteMsg").textContent = "确定要删除文档「" + name + ".pdf」吗？";
+  document.getElementById("deleteModal").classList.add("show");
+  document.getElementById("confirmDeleteBtn").onclick = deleteDoc;
+}
+function closeDeleteModal() { document.getElementById("deleteModal").classList.remove("show"); deleteTargetId=null; deleteMode='kb'; }
+
+async function deleteKb() {
+  if (!deleteTargetId) return;
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_database?knowledge_id=" + deleteTargetId + "&token=admin", {
+      method:"DELETE", headers:HEADERS_JSON
+    });
+    if (!resp.ok) { const e=await resp.json().catch(()=>({})); throw new Error(e.detail||"删除失败"); }
+    const deletedId = deleteTargetId;
+    closeDeleteModal();
+    kbList = kbList.filter(k => k.knowledge_id !== deletedId);
+    if (currentKbId === deletedId) {
+      currentKbId = null;
+      docList = [];
+      document.getElementById("kbBadge").textContent = "未选择知识库";
+      document.getElementById("kbBadge").className = "kb-badge empty";
+      document.getElementById("sendBtn").disabled = true;
+      document.getElementById("uploadInfo").textContent = "";
+    }
+    renderKbList();
+    renderDocList();
+  } catch(e) { alert("删除失败: " + e.message); closeDeleteModal(); }
+}
+
+async function deleteDoc() {
+  if (!deleteTargetId) return;
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_document?document_id=" + deleteTargetId + "&token=admin", {
+      method:"DELETE", headers:HEADERS_JSON
+    });
+    if (!resp.ok) { const e=await resp.json().catch(()=>({})); throw new Error(e.detail||"删除失败"); }
+    closeDeleteModal();
+    docList = docList.filter(d => d.document_id !== deleteTargetId);
+    renderDocList();
+    addMsg("system", "文档已删除");
+  } catch(e) { alert("删除失败: " + e.message); closeDeleteModal(); }
+}
+
+// ===== 文件上传 =====
+const $uploadZone = document.getElementById("uploadZone");
+$uploadZone.addEventListener("dragover", e => { e.preventDefault(); $uploadZone.classList.add("dragover"); });
+$uploadZone.addEventListener("dragleave", () => $uploadZone.classList.remove("dragover"));
+$uploadZone.addEventListener("drop", e => {
+  e.preventDefault(); $uploadZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file) doUpload(file);
+});
+
+async function uploadFile() {
+  const $file = document.getElementById("fileInput");
+  if ($file.files.length === 0) return;
+  await doUpload($file.files[0]);
+  $file.value = "";
+}
+
+async function doUpload(file) {
+  if (!currentKbId) return alert("请先选择一个知识库");
+  if (!file.name.match(/\.(pdf|docx?)$/i)) return alert("仅支持 PDF 和 Word 文件（.pdf / .doc / .docx）");
+  if (file.size > 50*1024*1024) return alert("文件不能超过 50MB");
+
+  const formData = new FormData();
+  formData.append("knowledge_id", currentKbId);
+  formData.append("title", file.name.replace(/\.pdf$/i, ""));
+  formData.append("category", "general");
+  formData.append("file", file);
+
+  document.getElementById("uploadInfo").textContent = "上传中...";
+  try {
+    const resp = await fetch(BASE + "/v1/knowledge_document", {
+      method:"POST", headers:{"X-API-Key":API_KEY}, body:formData
+    });
+    if (!resp.ok) { const e=await resp.json().catch(()=>({})); throw new Error(e.detail||"上传失败"); }
+    const data = await resp.json();
+    document.getElementById("uploadInfo").textContent = "上传成功";
+    addMsg("system", "文件「" + file.name + "」上传成功，正在后台解析...");
+    loadDocList(currentKbId);
+    setTimeout(() => { document.getElementById("uploadInfo").textContent = ""; }, 3000);
+  } catch(e) { alert("上传失败: " + e.message); document.getElementById("uploadInfo").textContent = ""; }
+}
+
+// ===== 聊天 =====
+const $msgs = document.getElementById("messages");
+const $input = document.getElementById("input");
+const $sendBtn = document.getElementById("sendBtn");
+
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  $msgs.appendChild(div);
+  $msgs.scrollTop = $msgs.scrollHeight;
+}
+
+let typingEl = null;
+function showTyping() {
+  typingEl = document.createElement("div");
+  typingEl.className = "typing";
+  typingEl.textContent = "检索中...";
+  $msgs.appendChild(typingEl);
+  $msgs.scrollTop = $msgs.scrollHeight;
+}
+function hideTyping() { if (typingEl) { typingEl.remove(); typingEl=null; } }
+
+function newChat() {
+  chatHistory = [];
+  currentSources = [];
+  closeSourcePanel();
+  document.getElementById("messages").innerHTML = "";
+}
+
+async function send() {
+  const question = $input.value.trim();
+  if (!question || !currentKbId) return;
+
+  $input.value = "";
+  $sendBtn.disabled = true;
+  addMsg("user", question);
+
+  chatHistory.push({role:"user", content:question});
+  const payload = { knowledge_id:currentKbId, message:chatHistory };
+  showTyping();
+
+  const assistantDiv = document.createElement("div");
+  assistantDiv.className = "msg assistant";
+  $msgs.appendChild(assistantDiv);
+
+  try {
+    const resp = await fetch(BASE + "/v1/chat", {
+      method:"POST", headers:HEADERS_JSON, body:JSON.stringify(payload)
+    });
+    if (!resp.ok) { const e=await resp.json().catch(()=>({})); throw new Error(e.detail||"HTTP "+resp.status); }
+    hideTyping();
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", full = "", sources = null;
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const d = JSON.parse(line.slice(6));
+        if (d.error) throw new Error(d.error);
+        if (d.done) { sources = d.sources || null; break; }
+        full += d.token;
+        assistantDiv.innerHTML = renderCitationsInline(full, sources);
+        $msgs.scrollTop = $msgs.scrollHeight;
+      }
+    }
+    if (!full) assistantDiv.textContent = "(空回答)";
+    if (sources) {
+      currentSources = sources;
+      // 渲染最终态（流结束后 sources 已知）
+      assistantDiv.innerHTML = renderCitationsInline(full, sources);
+    }
+    chatHistory.push({role:"assistant", content:full});
+  } catch(e) {
+    hideTyping();
+    if (!assistantDiv.textContent) { assistantDiv.textContent = "错误: " + e.message; assistantDiv.className = "msg error"; }
+  }
+  $sendBtn.disabled = false;
+  $input.focus();
+}
+
+$input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// ===== 工具 =====
+function escapeHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function renderCitationsInline(text, sources) {
+  if (!text) return text;
+  // 将 [1] [2] 替换为可点击角标
+  return escapeHtml(text).replace(/\[(\d+)\]/g, (match, id) => {
+    if (sources && sources.some(s => s.id == id)) {
+      return `<span class="citation" onclick="showSourceDetail(${id})">[${id}]</span>`;
+    }
+    return match;
+  });
+}
+
+function showSourceDetail(id) {
+  const src = currentSources.find(s => s.id === id);
+  if (!src) return;
+  const panel = document.getElementById("sourcePanel");
+  const content = document.getElementById("sourceContent");
+  content.innerHTML = `
+    <div class="source-item">
+      <div class="source-id">[${src.id}]</div>
+      <div class="source-doc">来源: ${escapeHtml(src.document_title || '未知文档')}</div>
+      <div class="source-text">${escapeHtml(src.content_preview)}</div>
+    </div>
+  `;
+  panel.classList.add("show");
+}
+
+function closeSourcePanel() {
+  document.getElementById("sourcePanel").classList.remove("show");
+}
+
+// ===== 初始化 =====
+checkHealth(); setInterval(checkHealth, 30000);
+loadKbList();
+$input.focus();
+</script>
+</body>
+</html>

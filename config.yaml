@@ -1,0 +1,60 @@
+database:
+  engine: "sqlite"
+  path: "rag.db"
+  host: "localhost"
+  port: 3306
+  username: ""
+  password: ""
+
+elasticsearch:
+  host: "localhost"
+  port: 9200
+  scheme: "http"
+  username: ""
+  password: ""
+
+models:
+  embedding_model:
+    bge-small-zh-v1.5:
+      hf_url: "https://huggingface.co/BAAI/bge-small-zh-v1.5"
+      local_url: "models/BAAI/bge-small-zh-v1.5/"
+      dims: 512
+
+  rerank_model:
+    bge-reranker-base:
+      hf_url: "https://huggingface.co/BAAI/bge-reranker-base"
+      local_url: "models/BAAI/bge-reranker-base/"
+  llm:
+    config:
+      temperature: 0.1
+      top_p: 1
+      max_tokens_to_sample: 1024
+    base:
+      glm:
+        tokens: ""
+      qwen:
+        tokens: ""
+      gpt:
+        tokens: ""
+device: "cpu"
+
+rag:
+
+  embedding_model: "bge-small-zh-v1.5"
+  rerank_model: "bge-reranker-base"
+  use_embedding: true
+  use_rerank: true
+  use_rrf: true
+  llm_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  llm_api_key: "${LLM_API_KEY}"
+  llm_model: "qwen-plus"
+  chunk_size: 256
+  overlap_size: 20
+  chunk_candidate: 10
+  port: 6010
+
+auth:
+  api_key: "${API_KEY}"
+
+
+

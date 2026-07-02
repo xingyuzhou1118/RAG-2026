@@ -1,0 +1,22 @@
+# 环境变量（含敏感信息，绝对不能提交）
+.env
+.env.example
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 上传的文件（运行时生成）
+upload_files/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 数据库文件（本地测试数据不宜提交）
+*.db
+*.sqlite
+
+# 模型文件（体积大，不宜入 git）
+models/
